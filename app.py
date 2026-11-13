@@ -7,9 +7,6 @@ Original file is located at
     https://colab.research.google.com/drive/1qYUYodCAvDlvnXMf62wfzi0ipHrLZajI
 """
 
-!pip install -q -U google-genai
-!pip install -q --upgrade gradio
-
 import gradio as gr
 
 print("Gradio version:", gr.__version__)
