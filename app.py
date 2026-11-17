@@ -15,15 +15,9 @@ from google import genai
 # --------------------------------------------
 
 #Local
+'''
 from dotenv import load_dotenv
 
-# ============================================
-# GEMINI API CONFIGURATION
-# LOCAL + LIVE (RENDER)
-# ============================================
-
-# Load local .env file.
-# On Render, environment variables are read directly.
 load_dotenv()
 
 # Read API key from environment
@@ -46,9 +40,9 @@ MODEL = os.getenv(
 )
 
 print("Gemini client initialized successfully!")
+'''
 
 #Live
-'''
 api_key = os.getenv("GEMINI_API_KEY")
 
 if not api_key:
@@ -63,7 +57,6 @@ client = genai.Client(api_key=api_key)
 MODEL = "gemini-3.5-flash-lite"
 
 print("Gemini client initialized successfully!")
-'''
 
 # --------------------------------------------
 # 2. DISPLAY CHAT MESSAGES
