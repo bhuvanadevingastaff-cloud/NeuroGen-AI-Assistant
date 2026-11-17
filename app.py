@@ -614,19 +614,16 @@ with gr.Blocks(css=custom_css) as demo:
 
 if __name__ == "__main__":
 
+    IS_LOCAL = False  # True = Local, False = Render Live
+
     port = int(os.environ.get("PORT", 7860))
 
-    print(f"Starting NeuroGen AI on port {port}")
+    host = "127.0.0.1" if IS_LOCAL else "0.0.0.0"
 
-    # Local
-    demo.queue().launch(server_name="127.0.0.1", server_port=port, share=False)
+    print(f"Starting NeuroGen AI on {host}:{port}")
 
-    # Live
-    """
     demo.queue().launch(
-        server_name="0.0.0.0",
+        server_name=host,
         server_port=port,
-        share=False,
-        css=custom_css
+        share=False
     )
-    """
