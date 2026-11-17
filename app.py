@@ -1,4 +1,3 @@
-
 # ============================================
 # NEUROGEN AI ASSISTANT
 # Python + Google Gemini API + Gradio
@@ -8,19 +7,18 @@
 import os
 import html
 import gradio as gr
+
 from google import genai
+from dotenv import load_dotenv
+from datetime import datetime
+
 
 # --------------------------------------------
 # 1. GEMINI API CONFIGURATION
 # --------------------------------------------
 
-#Local
-'''
-from dotenv import load_dotenv
-
 load_dotenv()
 
-# Read API key from environment
 api_key = os.getenv("GEMINI_API_KEY")
 
 if not api_key:
@@ -30,37 +28,17 @@ if not api_key:
         "or Render Environment Variables."
     )
 
-# Initialize Gemini client
 client = genai.Client(api_key=api_key)
 
-# Gemini model
-MODEL = os.getenv(
-    "GEMINI_MODEL",
-    "gemini-3.5-flash-lite"
-)
+MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
 print("Gemini client initialized successfully!")
-'''
 
-#Live
-api_key = os.getenv("GEMINI_API_KEY")
-
-if not api_key:
-    raise ValueError(
-        "GEMINI_API_KEY is missing! "
-        "Please add it in Render Environment Variables."
-    )
-
-client = genai.Client(api_key=api_key)
-
-# Use the model name that works with your Gemini API key.
-MODEL = "gemini-3.5-flash-lite"
-
-print("Gemini client initialized successfully!")
 
 # --------------------------------------------
 # 2. DISPLAY CHAT MESSAGES
 # --------------------------------------------
+
 
 def show_chat(history):
 
@@ -82,9 +60,7 @@ def show_chat(history):
 
         role = item["role"]
 
-        content = html.escape(
-            str(item["content"])
-        ).replace("\n", "<br>")
+        content = html.escape(str(item["content"])).replace("\n", "<br>")
 
         if role == "user":
 
@@ -121,54 +97,146 @@ def show_chat(history):
 # 3. GEMINI CHATBOT FUNCTION
 # --------------------------------------------
 
-def chat_with_gemini(message, history):
+
+def chat_with_gemini(
+    message, history, user_name, user_role, skill_level, interests, reference_context
+):
 
     history = history or []
 
+    # Validate message
     if not message or not message.strip():
         yield show_chat(history), history, ""
         return
 
     message = message.strip()
 
-    # Prepare previous conversation
+    # ----------------------------------------
+    # USER CONTEXT
+    # ----------------------------------------
+
+    user_context = f"""
+User Profile:
+Name: {user_name or 'Not provided'}
+Role: {user_role or 'Not provided'}
+Skill Level: {skill_level or 'Beginner'}
+Interests: {interests or 'Not provided'}
+
+Instructions:
+Personalize your answer according to the user's
+role, skill level and interests.
+Use simple explanations and suitable examples
+based on the user's skill level.
+"""
+
+    # ----------------------------------------
+    # DYNAMIC CONTEXT
+    # ----------------------------------------
+
+    current_datetime = datetime.now().astimezone()
+
+    dynamic_context = f"""
+Current Date: {current_datetime.strftime("%d-%m-%Y")}
+Current Time: {current_datetime.strftime("%I:%M %p")}
+Day: {current_datetime.strftime("%A")}
+
+Instructions:
+Use the current date and time when answering
+time-related questions.
+"""
+
+    # ----------------------------------------
+    # GROUNDING CONTEXT
+    # ----------------------------------------
+
+    if reference_context and reference_context.strip():
+
+        grounding_context = f"""
+        Reference Information:
+        {reference_context.strip()}
+
+        Instructions:
+        1. Answer using the provided reference information.
+        2. Do not invent facts that are not present in the reference.
+        3. If the answer is not available in the reference, clearly say:
+        "The provided reference does not contain this information."
+        """
+
+    else:
+
+        grounding_context = """
+        No reference information was provided.
+
+        Answer normally using your general knowledge.
+        """
+
+        # ----------------------------------------
+        # COMBINE ALL CONTEXT
+        # ----------------------------------------
+
+        contextual_message = f"""
+        {user_context}
+
+        Dynamic Context:
+        {dynamic_context}
+
+        Grounding Context:
+        {grounding_context}
+
+        User Question:
+        {message}
+        """
+
+    # ----------------------------------------
+    # CONVERSATION HISTORY
+    # ----------------------------------------
+
     contents = []
 
-    for item in history:
+    # ----------------------------------------
+    # CONTEXT FILTERING
+    # ----------------------------------------
+
+    # Keep only the latest 10 messages
+    filtered_history = history[-10:]
+
+    # ----------------------------------------
+    # CONVERSATION HISTORY
+    # ----------------------------------------
+
+    contents = []
+
+    for item in filtered_history:
 
         role = item["role"]
 
         if role in ["user", "assistant"]:
 
-            contents.append({
-                "role": "user" if role == "user" else "model",
-                "parts": [
-                    {"text": str(item["content"])}
-                ]
-            })
+            contents.append(
+                {
+                    "role": "user" if role == "user" else "model",
+                    "parts": [{"text": str(item["content"])}],
+                }
+            )
 
-    # Add current question
-    contents.append({
-        "role": "user",
-        "parts": [{"text": message}]
-    })
+    # Add current question with context
+    contents.append({"role": "user", "parts": [{"text": contextual_message}]})
 
-    base_history = history + [
-        {"role": "user", "content": message}
-    ]
+    # Store user question
+    base_history = history + [{"role": "user", "content": message}]
 
     # Display user question
     yield show_chat(base_history), base_history, ""
+
+    # ----------------------------------------
+    # GEMINI STREAMING RESPONSE
+    # ----------------------------------------
 
     try:
 
         answer = ""
 
-        # Generate streaming response
-        stream = client.models.generate_content_stream(
-            model=MODEL,
-            contents=contents
-        )
+        stream = client.models.generate_content_stream(model=MODEL, contents=contents)
 
         for chunk in stream:
 
@@ -177,55 +245,34 @@ def chat_with_gemini(message, history):
                 answer += chunk.text
 
                 current_history = base_history + [
-                    {
-                        "role": "assistant",
-                        "content": answer
-                    }
+                    {"role": "assistant", "content": answer}
                 ]
 
-                yield (
-                    show_chat(current_history),
-                    current_history,
-                    ""
-                )
+                yield (show_chat(current_history), current_history, "")
 
         if not answer:
             answer = "No response received. Please try again."
 
-        final_history = base_history + [
-            {
-                "role": "assistant",
-                "content": answer
-            }
-        ]
+        # Final history
+        final_history = base_history + [{"role": "assistant", "content": answer}]
 
-        yield (
-            show_chat(final_history),
-            final_history,
-            ""
-        )
+        yield (show_chat(final_history), final_history, "")
 
     except Exception as e:
 
         print("Gemini Error:", str(e))
 
         error_history = base_history + [
-            {
-                "role": "assistant",
-                "content": f"Error: {str(e)}"
-            }
+            {"role": "assistant", "content": f"Error: {str(e)}"}
         ]
 
-        yield (
-            show_chat(error_history),
-            error_history,
-            ""
-        )
+        yield (show_chat(error_history), error_history, "")
 
 
 # --------------------------------------------
 # 4. CLEAR CONVERSATION
 # --------------------------------------------
+
 
 def clear_chat():
 
@@ -426,7 +473,6 @@ custom_css = """
         min-width: 85px !important;
     }
 }
-
 """
 
 
@@ -434,7 +480,7 @@ custom_css = """
 # 6. CREATE GRADIO CHATBOT INTERFACE
 # --------------------------------------------
 
-with gr.Blocks() as demo:
+with gr.Blocks(css=custom_css) as demo:
 
     with gr.Column(elem_id="main-card"):
 
@@ -444,23 +490,53 @@ with gr.Blocks() as demo:
 
             ### Your Smart AI Conversation Partner
             """,
-            elem_id="app-heading"
+            elem_id="app-heading",
         )
 
-        gr.Markdown(
-            "🟢 **Online** | Powered by Google Gemini"
+        gr.Markdown("🟢 **Online** | Powered by Google Gemini")
+
+        # ------------------------------------
+        # USER CONTEXT UI
+        # ------------------------------------
+
+        gr.Markdown("### 👤 User Context")
+
+        user_name = gr.Textbox(label="Your Name", placeholder="Example: Ravi")
+
+        user_role = gr.Textbox(
+            label="Your Role", placeholder="Example: College Student"
         )
 
-        # Conversation history
+        skill_level = gr.Dropdown(
+            label="Skill Level",
+            choices=["Beginner", "Intermediate", "Advanced"],
+            value="Beginner",
+        )
+
+        interests = gr.Textbox(
+            label="Your Interests", placeholder="Example: Python, AI, Data Science"
+        )
+
+        # ------------------------------------
+        # CONVERSATION HISTORY STATE
+        # ------------------------------------
+
         chat_history = gr.State([])
 
-        # Chat display
-        chat_display = gr.HTML(
-            value=show_chat([]),
-            elem_id="chat-window"
+        gr.Markdown("### 📚 Reference Context")
+
+        reference_context = gr.Textbox(
+            label="Provide Reference Information",
+            placeholder="Paste your document or reference information here...",
+            lines=5,
         )
 
-        # Input and Submit button
+        chat_display = gr.HTML(value=show_chat([]), elem_id="chat-window")
+
+        # ------------------------------------
+        # MESSAGE INPUT
+        # ------------------------------------
+
         with gr.Row(elem_id="input-row"):
 
             message = gr.Textbox(
@@ -468,52 +544,72 @@ with gr.Blocks() as demo:
                 show_label=False,
                 lines=2,
                 scale=8,
-                elem_id="message-input"
+                elem_id="message-input",
             )
 
             submit_btn = gr.Button(
-                "➤ Submit",
-                variant="primary",
-                scale=2,
-                elem_id="send-button"
+                "➤ Submit", variant="primary", scale=2, elem_id="send-button"
             )
 
-        # Clear button
+        # ------------------------------------
+        # CLEAR BUTTON
+        # ------------------------------------
+
         clear_btn = gr.Button(
-            "🗑️ Clear Conversation",
-            variant="secondary",
-            elem_id="clear-button"
+            "🗑️ Clear Conversation", variant="secondary", elem_id="clear-button"
         )
 
         gr.Markdown(
-            "Designed with Gradio | Powered by Gemini AI",
-            elem_id="footer-text"
+            "Designed with Gradio | Powered by Gemini AI", elem_id="footer-text"
         )
 
-    # Submit button event
+    # ----------------------------------------
+    # SUBMIT BUTTON EVENT
+    # ----------------------------------------
+
     submit_btn.click(
         fn=chat_with_gemini,
-        inputs=[message, chat_history],
-        outputs=[chat_display, chat_history, message]
+        inputs=[
+            message,
+            chat_history,
+            user_name,
+            user_role,
+            skill_level,
+            interests,
+            reference_context,
+        ],
+        outputs=[chat_display, chat_history, message],
     )
 
-    # Enter key event
+    # ----------------------------------------
+    # ENTER KEY EVENT
+    # ----------------------------------------
+
     message.submit(
         fn=chat_with_gemini,
-        inputs=[message, chat_history],
-        outputs=[chat_display, chat_history, message]
+        inputs=[
+            message,
+            chat_history,
+            user_name,
+            user_role,
+            skill_level,
+            interests,
+            reference_context,
+        ],
+        outputs=[chat_display, chat_history, message],
     )
 
-    # Clear conversation event
+    # ----------------------------------------
+    # CLEAR CONVERSATION EVENT
+    # ----------------------------------------
+
     clear_btn.click(
-        fn=clear_chat,
-        inputs=[],
-        outputs=[chat_display, chat_history, message]
+        fn=clear_chat, inputs=[], outputs=[chat_display, chat_history, message]
     )
 
 
 # --------------------------------------------
-# 7. START APPLICATION ON RENDER
+# 7. START APPLICATION
 # --------------------------------------------
 
 if __name__ == "__main__":
@@ -522,9 +618,15 @@ if __name__ == "__main__":
 
     print(f"Starting NeuroGen AI on port {port}")
 
+    # Local
+    demo.queue().launch(server_name="127.0.0.1", server_port=port, share=False)
+
+    # Live
+    """
     demo.queue().launch(
         server_name="0.0.0.0",
         server_port=port,
         share=False,
         css=custom_css
     )
+    """
