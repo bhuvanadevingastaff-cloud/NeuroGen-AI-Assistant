@@ -1,3 +1,7 @@
 gradio>=5.0.0
 google-genai>=1.0.0
 python-dotenv>=1.0.0
+pandas
+numpy
+pypdf
+python-docx
